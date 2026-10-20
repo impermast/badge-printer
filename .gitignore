@@ -9,13 +9,17 @@ __pycache__/
 
 AGENTS.md
 design/**
+!design/test_*.png
+!design/SourceSans3-Bold.ttf
+!design/OFL.txt
 
 # Registrations may contain personal data; never commit real inputs or outputs.
 data/input/*
 !data/input/.gitkeep
 data/work/*
 !data/work/.gitkeep
+data/ai-patches/*
+!data/ai-patches/.gitkeep
 data/patches/*
-!data/patches/.gitkeep
 output/*
 !output/.gitkeep

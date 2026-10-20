@@ -4,7 +4,7 @@
 
 ## Установка
 
-Нужен Python 3.10+ и PyMuPDF:
+Нужен Python 3.10+ и PyMuPDF. В репозитории есть Source Sans 3 Bold под лицензией OFL 1.1; текст лицензии находится в `design/OFL.txt`.
 
 ```bash
 python -m venv .venv
@@ -32,7 +32,7 @@ python main.py prepare
 python main.py export-ai
 ```
 
-Загрузите в ИИ три файла: `data/patches/INSTRUCTIONS.md`, `data/patches/affiliations_reference.csv` и один JSON из `data/patches/original/`. Обрабатывайте пакеты по одному. Сохраните каждый возвращённый JSON с тем же именем в `data/patches/returned/`.
+Загрузите в ИИ три файла: `data/ai-patches/INSTRUCTIONS.md`, `data/ai-patches/affiliations_reference.csv` и один JSON из `data/ai-patches/original/`. Обрабатывайте пакеты по одному. Сохраните каждый возвращённый JSON с тем же именем в `data/ai-patches/returned/`.
 
 Затем выполните:
 
@@ -47,7 +47,7 @@ python main.py apply
 python main.py badges
 ```
 
-ИИ получает только названия организаций, без имён и ID. Предложения не применяются без ручного одобрения. Вместо ИИ можно заполнить `Suggested` и `Approved` вручную.
+ИИ получает только названия организаций, без имён и ID. Предложения не применяются без ручного одобрения. `apply` снимает только пометку о неизвестной аффилиации и сохраняет остальные причины `NEED REVIEW`. Вместо ИИ можно заполнить `Suggested` и `Approved` вручную.
 
 ## PDF и проверка
 
@@ -56,7 +56,7 @@ python main.py badges
 - `output/badges_participants_a4.pdf`
 - `output/badges_organizers_a4.pdf`
 
-Фоновые изображения указываются в `main.py` и хранятся локально в `design/`. Перед печатью проверьте строки `NEED REVIEW` в `data/work/participants.csv`.
+Фоновые PNG для реальной печати хранятся локально в `design/` и не входят в репозиторий. Пути к PNG и Source Sans 3, а также размеры листа, бейджа и текстовых полей задаются в блоке `CONFIG` файла `main.py`. `settings.py` содержит dataclass-типы настроек; пользовательские параметры макета находятся в `main.py`. Перед печатью проверьте строки `NEED REVIEW` в `data/work/participants.csv`.
 
 Запустить тесты:
 

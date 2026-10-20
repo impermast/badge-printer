@@ -81,6 +81,11 @@ def prepare(settings: Settings, input_path: Path | None = None, force: bool = Fa
         institution, known = shorten(aff, mapping)
         if not known:
             unknown[aff] += 1
+        notes = []
+        if not known:
+            notes.append("Unknown affiliation")
+        if not first.strip():
+            notes.append("Missing first name")
         row = {
             "ID": original["ID"],
             "Full Name": original.get("Name") or " ".join(x for x in (first, last) if x),
@@ -90,8 +95,8 @@ def prepare(settings: Settings, input_path: Path | None = None, force: bool = Fa
             "Institution": institution,
             "Country": settings.processing.country_names.get(original["Country"], original["Country"]),
             "Type": settings.processing.default_type,
-            "Review": "OK" if known and first else "NEED REVIEW",
-            "Notes": "Unknown affiliation" if not known else ("Missing first name" if not first else ""),
+            "Review": "NEED REVIEW" if notes else "OK",
+            "Notes": " | ".join(notes),
         }
         sync_affiliation_length_flag(
             row, institution_too_long(institution, font, settings.typography)
@@ -117,6 +122,7 @@ def apply_approved(settings: Settings) -> None:
     dictionary_rows = read_csv(paths.dictionary)
     mapping = load_dictionary(paths.dictionary)
     added = 0
+    approved_mappings: dict[str, str] = {}
     intentionally_blank: set[str] = set()
     for item in review:
         decision = item.get("Approved", "").strip().upper()
@@ -127,10 +133,15 @@ def apply_approved(settings: Settings) -> None:
         original, short = item["Affiliation"], item["Suggested"].strip()
         normalized = normalize(original)
         if not short:
+            if normalized in approved_mappings:
+                raise ValueError(f"Conflicting approved decisions for {original}")
             intentionally_blank.add(normalized)
             continue
+        if normalized in intentionally_blank:
+            raise ValueError(f"Conflicting approved decisions for {original}")
         if normalized in mapping and mapping[normalized] != short:
             raise ValueError(f"Conflicting mapping for {original}: {mapping[normalized]} vs {short}")
+        approved_mappings[normalized] = short
         if normalized not in mapping:
             dictionary_rows.append({"Affiliation": original, "Institution": short})
             mapping[normalized] = short
@@ -140,18 +151,32 @@ def apply_approved(settings: Settings) -> None:
     validate_people(people)
     fixed = 0
     for row in people:
-        if normalize(row["Affiliation"]) in intentionally_blank and row["Institution"] == row["Affiliation"]:
+        normalized = normalize(row["Affiliation"])
+        if normalized in intentionally_blank and row["Institution"] == row["Affiliation"]:
             row["Institution"] = ""
+            notes = [
+                part.strip() for part in row["Notes"].split(" | ")
+                if part.strip() and part.strip() != "Unknown affiliation"
+            ]
+            if NO_AFFILIATION not in notes:
+                notes.append(NO_AFFILIATION)
+            row["Notes"] = " | ".join(notes)
             row["Review"] = "NEED REVIEW"
-            row["Notes"] = NO_AFFILIATION
             fixed += 1
             continue
-        suggestion, known = shorten(row["Affiliation"], mapping)
-        if known and row["Institution"] == row["Affiliation"]:
-            row["Institution"] = suggestion
+        if normalized not in approved_mappings or row["Institution"] != row["Affiliation"]:
+            continue
+
+        row["Institution"] = approved_mappings[normalized]
+        notes = [part.strip() for part in row["Notes"].split(" | ") if part.strip()]
+        affiliation_only_review = notes == ["Unknown affiliation"]
+        notes = [part for part in notes if part != "Unknown affiliation"]
+        if not row["First Name"].strip() and "Missing first name" not in notes:
+            notes.append("Missing first name")
+        row["Notes"] = " | ".join(notes)
+        if affiliation_only_review and not notes:
             row["Review"] = "OK"
-            row["Notes"] = ""
-            fixed += 1
+        fixed += 1
 
     # Check the full result before writing to disk.
     validate_people(people)
