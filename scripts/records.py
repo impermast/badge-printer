@@ -13,6 +13,7 @@ COLUMNS = (
 )
 AFFILIATION_COLUMNS = ("Affiliation", "Count", "Suggested", "Approved", "Sources", "Notes")
 AFFILIATION_TOO_LONG = "AFFILIATION_TOO_LONG"
+NO_AFFILIATION = "NO_AFFILIATION"
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -50,7 +51,12 @@ def validate_people(rows: list[dict[str, str]]) -> None:
     if any(not identifier for identifier in ids) or len(ids) != len(set(ids)):
         raise ValueError("Missing or duplicate participant IDs")
     for row in rows:
-        if not row["Last Name"].strip() or not row["Institution"].strip():
+        intentionally_blank = (
+            not row["Institution"].strip()
+            and row["Review"] == "NEED REVIEW"
+            and NO_AFFILIATION in row["Notes"].split(" | ")
+        )
+        if not row["Last Name"].strip() or (not row["Institution"].strip() and not intentionally_blank):
             raise ValueError(f"ID {row['ID']}: missing Last Name or Institution")
         if row["Type"] not in {"PARTICIPANT", "ORGANIZER"}:
             raise ValueError(f"ID {row['ID']}: unknown badge type {row['Type']!r}")

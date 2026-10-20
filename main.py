@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import replace
 from pathlib import Path
 
 from settings import Badge, Paths, Processing, Settings, Sheet, TextField, Typography
@@ -40,7 +41,7 @@ CONFIG = Settings(
 
 # 2. PIPELINE. Invoke only the requested step; no import-time side effects.
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Prepare Indico registrations and print 4-up A4 badges")
+    parser = argparse.ArgumentParser(description="Prepare registration data and generate A4 badges")
     parser.add_argument("command", choices=["prepare", "export-ai", "import-ai", "apply", "review", "badges"])
     parser.add_argument("--input", type=Path, help="Override the CSV input for 'prepare'")
     parser.add_argument("--force", action="store_true", help="Replace an existing prepared CSV (prepare only)")
@@ -66,7 +67,12 @@ def main() -> None:
     elif args.command == "review":
         update_review_page(CONFIG)
     elif args.command == "badges":
-        generate_pdf(CONFIG)
+        for badge_type, filename in (
+            ("PARTICIPANT", "badges_participants_a4.pdf"),
+            ("ORGANIZER", "badges_organizers_a4.pdf"),
+        ):
+            output = CONFIG.paths.pdf_output.with_name(filename)
+            generate_pdf(replace(CONFIG, paths=replace(CONFIG.paths, pdf_output=output)), badge_type)
 
 
 if __name__ == "__main__":

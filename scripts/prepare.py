@@ -1,4 +1,4 @@
-"""Prepare Indico registrations without changing original data."""
+"""Prepare registration data without changing the source export."""
 from __future__ import annotations
 
 from collections import Counter
@@ -9,7 +9,7 @@ from pathlib import Path
 from settings import Settings
 from .records import (
     COLUMNS, AFFILIATION_COLUMNS, read_csv, save_csv,
-    validate_people, sync_affiliation_length_flag, AFFILIATION_TOO_LONG,
+    validate_people, sync_affiliation_length_flag, AFFILIATION_TOO_LONG, NO_AFFILIATION,
 )
 from .layout import find_font, institution_too_long
 import fitz
@@ -68,7 +68,7 @@ def prepare(settings: Settings, input_path: Path | None = None, force: bool = Fa
         raise ValueError("Prepared table already exists; use --force only if you intend to discard manual edits")
     source = read_csv(input_path or paths.registrations)
     if not source or not {"ID", "First Name", "Last Name", "Affiliation", "Country"}.issubset(source[0]):
-        raise ValueError("Indico CSV needs ID, First Name, Last Name, Affiliation, Country")
+        raise ValueError("CSV needs ID, First Name, Last Name, Affiliation, Country")
     mapping = load_dictionary(paths.dictionary)
     font = fitz.Font(fontfile=str(find_font(settings.badge.font_path)))
     result = []
@@ -117,6 +117,7 @@ def apply_approved(settings: Settings) -> None:
     dictionary_rows = read_csv(paths.dictionary)
     mapping = load_dictionary(paths.dictionary)
     added = 0
+    intentionally_blank: set[str] = set()
     for item in review:
         decision = item.get("Approved", "").strip().upper()
         if decision not in {"", "YES", "NO"}:
@@ -124,9 +125,10 @@ def apply_approved(settings: Settings) -> None:
         if decision != "YES":
             continue
         original, short = item["Affiliation"], item["Suggested"].strip()
-        if not short:
-            raise ValueError(f"Approved without abbreviation: {original}")
         normalized = normalize(original)
+        if not short:
+            intentionally_blank.add(normalized)
+            continue
         if normalized in mapping and mapping[normalized] != short:
             raise ValueError(f"Conflicting mapping for {original}: {mapping[normalized]} vs {short}")
         if normalized not in mapping:
@@ -138,6 +140,12 @@ def apply_approved(settings: Settings) -> None:
     validate_people(people)
     fixed = 0
     for row in people:
+        if normalize(row["Affiliation"]) in intentionally_blank and row["Institution"] == row["Affiliation"]:
+            row["Institution"] = ""
+            row["Review"] = "NEED REVIEW"
+            row["Notes"] = NO_AFFILIATION
+            fixed += 1
+            continue
         suggestion, known = shorten(row["Affiliation"], mapping)
         if known and row["Institution"] == row["Affiliation"]:
             row["Institution"] = suggestion

@@ -13,8 +13,9 @@ import fitz
 from settings import Paths
 from scripts.ai_patches import export_ai, import_ai
 from scripts.generate import generate_pdf
+from scripts.layout import find_font, name_lines
 from scripts.prepare import apply_approved, prepare, shorten, transliterate
-from scripts.records import AFFILIATION_COLUMNS, AFFILIATION_TOO_LONG, read_csv, save_csv
+from scripts.records import AFFILIATION_COLUMNS, AFFILIATION_TOO_LONG, NO_AFFILIATION, read_csv, save_csv
 
 
 class WorkflowTest(unittest.TestCase):
@@ -137,6 +138,44 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(revised["Notes"], "")
         with fitz.open(config.paths.pdf_output) as doc:
             self.assertIn("FSEI", doc[0].get_text())
+
+    def test_approved_blank_affiliation_is_not_printed(self):
+        config = self.settings
+        prepare(config)
+        review = read_csv(config.paths.affiliation_review)
+        review[0]["Approved"] = "YES"
+        save_csv(config.paths.affiliation_review, review, AFFILIATION_COLUMNS)
+        apply_approved(config)
+
+        people = read_csv(config.paths.participants)
+        self.assertEqual(people[2]["Institution"], "")
+        self.assertEqual(people[2]["Review"], "NEED REVIEW")
+        self.assertEqual(people[2]["Notes"], NO_AFFILIATION)
+        generate_pdf(config)
+        with fitz.open(config.paths.pdf_output) as doc:
+            self.assertNotIn("Unknown University of Advanced Physical Research", doc[0].get_text())
+
+    def test_given_name_wrap_and_type_filtered_pdf(self):
+        config = self.settings
+        font = fitz.Font(fontfile=str(find_font(config.badge.font_path)))
+        wrapped = name_lines("Carolus Le Magnus Roy", font, config.typography.first_name)
+        self.assertEqual(wrapped, ["Carolus Le", "Magnus Roy"])
+
+        prepare(config)
+        people = read_csv(config.paths.participants)
+        people[1]["Type"] = "ORGANIZER"
+        people[1]["First Name"] = "Carolus Le Magnus Roy"
+        people[1]["Last Name"] = "Ndinga"
+        save_csv(config.paths.participants, people)
+        organizer_pdf = replace(config, paths=replace(config.paths, pdf_output=config.paths.root / "organizers.pdf"))
+        generate_pdf(organizer_pdf, badge_type="ORGANIZER")
+        with fitz.open(organizer_pdf.paths.pdf_output) as doc:
+            self.assertEqual(len(doc), 1)
+            text = doc[0].get_text()
+            self.assertIn("Carolus Le", text)
+            self.assertIn("Magnus Roy", text)
+            self.assertIn("Ndinga", text)
+            self.assertNotIn("Pyotr", text)
 
     def test_reject_incomplete_or_modified_batches(self):
         config = self.settings

@@ -5,7 +5,7 @@ import math
 import fitz
 
 from settings import Settings, TextField
-from .layout import pt, find_font, fitted_size, institution_lines, institution_too_long
+from .layout import pt, find_font, fitted_size, institution_lines, institution_too_long, name_lines
 from .records import read_csv, save_csv, sync_affiliation_length_flag, validate_people
 from .prepare import update_review_page
 
@@ -19,9 +19,15 @@ def write_center(page: fitz.Page, font: fitz.Font, text: str,
     page.insert_text((badge_left_pt + (badge_w_pt - width) / 2, badge_top_pt + pt(baseline_mm)),
                      text, fontname="badge_bold", fontsize=size, color=(0, 0, 0))
 
-def generate_pdf(settings: Settings) -> None:
+def generate_pdf(settings: Settings, badge_type: str | None = None) -> None:
     people = read_csv(settings.paths.participants)
     validate_people(people)
+    if badge_type is not None:
+        if badge_type not in {"PARTICIPANT", "ORGANIZER"}:
+            raise ValueError(f"Unknown badge type: {badge_type}")
+        people = [person for person in people if person["Type"] == badge_type]
+        if not people:
+            raise ValueError(f"No registrations for badge type {badge_type}")
     sheet, badge, typography = settings.sheet, settings.badge, settings.typography
     if (sheet.columns * badge.width_mm + (sheet.columns - 1) * sheet.gap_x_mm + 2 * sheet.margin_x_mm
             > sheet.width_mm + 0.001 or
@@ -85,8 +91,10 @@ def generate_pdf(settings: Settings) -> None:
             else:
                 page.insert_image(frame, stream=design, keep_proportion=False)
             try:
-                write_center(page, font, person["First Name"], left, top, width,
-                             typography.first_name.baseline_mm, typography.first_name)
+                given_name_lines = name_lines(person["First Name"], font, typography.first_name)
+                for line_index, line in enumerate(given_name_lines):
+                    baseline = typography.first_name.baseline_mm - 11.0 * (len(given_name_lines) - 1 - line_index)
+                    write_center(page, font, line, left, top, width, baseline, typography.first_name)
                 write_center(page, font, person["Last Name"], left, top, width,
                              typography.last_name.baseline_mm, typography.last_name)
                 if person["ID"] not in too_long:

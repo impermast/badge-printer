@@ -36,6 +36,21 @@ def fitted_size(font: fitz.Font, text: str, field: TextField) -> float:
     return max(field.min_font_size_pt, size)
 
 
+def name_lines(value: str, font: fitz.Font, style: TextField) -> list[str]:
+    """Wrap a long multiword given name at a word boundary when needed."""
+    max_width = pt(style.max_width_mm)
+    if font.text_length(value, fontsize=style.font_size_pt) <= max_width:
+        return [value]
+    words = value.split()
+    if len(words) < 2:
+        return [value]
+    split = min(range(1, len(words)), key=lambda i: max(
+        font.text_length(" ".join(words[:i]), fontsize=style.font_size_pt),
+        font.text_length(" ".join(words[i:]), fontsize=style.font_size_pt),
+    ))
+    return [" ".join(words[:split]), " ".join(words[split:])]
+
+
 def institution_lines(value: str, font: fitz.Font, style: TextField) -> list[str]:
     """Prefer organization boundaries, otherwise wrap only between words."""
     max_width = pt(style.max_width_mm)
