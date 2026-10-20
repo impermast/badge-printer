@@ -12,6 +12,7 @@ COLUMNS = (
     "Institution", "Country", "Type", "Review", "Notes",
 )
 AFFILIATION_COLUMNS = ("Affiliation", "Count", "Suggested", "Approved", "Sources", "Notes")
+AFFILIATION_TOO_LONG = "AFFILIATION_TOO_LONG"
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
@@ -55,3 +56,18 @@ def validate_people(rows: list[dict[str, str]]) -> None:
             raise ValueError(f"ID {row['ID']}: unknown badge type {row['Type']!r}")
         if row["Review"] not in {"OK", "NEED REVIEW"}:
             raise ValueError(f"ID {row['ID']}: Review must be OK or NEED REVIEW")
+
+
+def sync_affiliation_length_flag(row: dict[str, str], too_long: bool) -> bool:
+    """Synchronize the length flag without changing unrelated review reasons."""
+    before = (row["Review"], row["Notes"])
+    notes = [part.strip() for part in row["Notes"].split(" | ") if part.strip()]
+    had_tag = AFFILIATION_TOO_LONG in notes
+    notes = [part for part in notes if part != AFFILIATION_TOO_LONG]
+    if too_long:
+        notes.append(AFFILIATION_TOO_LONG)
+        row["Review"] = "NEED REVIEW"
+    elif had_tag and not notes:
+        row["Review"] = "OK"
+    row["Notes"] = " | ".join(notes)
+    return (row["Review"], row["Notes"]) != before

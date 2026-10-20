@@ -45,6 +45,15 @@ def main() -> None:
     parser.add_argument("--input", type=Path, help="Override the CSV input for 'prepare'")
     parser.add_argument("--force", action="store_true", help="Replace an existing prepared CSV (prepare only)")
     args = parser.parse_args()
+    if args.input is not None and args.command != "prepare":
+        parser.error(
+            "--input is only valid for 'prepare'. 'badges' reads "
+            "data/work/participants.csv, including approved AI and manual edits. "
+            "Run: python main.py badges"
+        )
+
+    if args.force and args.command != "prepare":
+        parser.error("--force is only valid for 'prepare'")
 
     if args.command == "prepare":
         prepare(CONFIG, input_path=args.input, force=args.force)

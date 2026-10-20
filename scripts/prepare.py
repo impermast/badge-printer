@@ -7,7 +7,12 @@ import re
 from pathlib import Path
 
 from settings import Settings
-from .records import COLUMNS, AFFILIATION_COLUMNS, read_csv, save_csv, validate_people
+from .records import (
+    COLUMNS, AFFILIATION_COLUMNS, read_csv, save_csv,
+    validate_people, sync_affiliation_length_flag, AFFILIATION_TOO_LONG,
+)
+from .layout import find_font, institution_too_long
+import fitz
 
 RU = {
     "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
@@ -65,6 +70,7 @@ def prepare(settings: Settings, input_path: Path | None = None, force: bool = Fa
     if not source or not {"ID", "First Name", "Last Name", "Affiliation", "Country"}.issubset(source[0]):
         raise ValueError("Indico CSV needs ID, First Name, Last Name, Affiliation, Country")
     mapping = load_dictionary(paths.dictionary)
+    font = fitz.Font(fontfile=str(find_font(settings.badge.font_path)))
     result = []
     unknown: Counter[str] = Counter()
     for original in source:
@@ -87,6 +93,9 @@ def prepare(settings: Settings, input_path: Path | None = None, force: bool = Fa
             "Review": "OK" if known and first else "NEED REVIEW",
             "Notes": "Unknown affiliation" if not known else ("Missing first name" if not first else ""),
         }
+        sync_affiliation_length_flag(
+            row, institution_too_long(institution, font, settings.typography)
+        )
         result.append(row)
     validate_people(result)
     save_csv(paths.participants, result)
@@ -96,7 +105,9 @@ def prepare(settings: Settings, input_path: Path | None = None, force: bool = Fa
     ]
     save_csv(paths.affiliation_review, to_review, AFFILIATION_COLUMNS)
     update_review_page(settings)
-    print(f"Prepared: {len(result)} registrations; unknown affiliation variants: {len(to_review)}")
+    long_count = sum(AFFILIATION_TOO_LONG in r["Notes"] for r in result)
+    print(f"Prepared: {len(result)} registrations; unknown affiliation variants: {len(to_review)}; "
+          f"too-long institutions: {long_count}")
     print(f"Edit: {paths.participants}\nAffiliations: {paths.affiliation_review}")
 
 
@@ -142,12 +153,22 @@ def apply_approved(settings: Settings) -> None:
         save_csv(paths.participants, people)
     update_review_page(settings)
     print(f"Approved: {added} new dictionary entries; updated participants: {fixed}")
+    pending = sum(item.get("Approved", "").strip().upper() != "YES" for item in review)
+    print(f"Pending affiliation variants: {pending}")
     print("Other manual Institution edits remain untouched")
 
 
 def update_review_page(settings: Settings) -> None:
     people = read_csv(settings.paths.participants)
     validate_people(people)
+    font = fitz.Font(fontfile=str(find_font(settings.badge.font_path)))
+    changed = False
+    for person in people:
+        changed |= sync_affiliation_length_flag(
+            person, institution_too_long(person["Institution"], font, settings.typography)
+        )
+    if changed:
+        save_csv(settings.paths.participants, people)
     parts = [
         '<!doctype html><html lang="ru"><meta charset="utf-8"><title>Badge review</title>',
         '<style>body{font:14px system-ui,sans-serif;margin:20px}table{border-collapse:collapse;width:100%}',

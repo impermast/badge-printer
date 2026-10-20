@@ -1,9 +1,9 @@
-Affiliation,Institution
+﻿Affiliation,Institution
 National Research Nuclear University MEPhI,NRNU MEPhI
 National Research Nuclear University “MEPhI”,NRNU MEPhI
 НИЯУ МИФИ,NRNU MEPhI
 NRNU MEPhI,NRNU MEPhI
-Moscow Engineering Physics Institute,MEPhI
+Moscow Engineering Physics Institute,NRNU MEPhI
 Lomonosov Moscow State University,MSU
 МГУ,MSU
 НИИЯФ МГУ,SINP MSU
@@ -17,3 +17,12 @@ NRC KI,NRC KI
 НИЦ Курчатовский институт,NRC KI
 "НИЦ ""Курчатовский институт""",NRC KI
 "NRC ""Kurchatov Institute"" - IHEP",IHEP
+MLIT,MLIT
+Курский Государственный Университет,Kursk State University
+INR,INR
+Петербургский государственный университет путей сообщения Императора Александра I,PGUPS
+"ФГАОУ ВО ""Крымский Федеральный Университет Им. В.И. Вернадского""",Vernadsky CFU
+HW,HW
+СПб филиал САО РАН,SAO RAS (St. Petersburg)
+Федеральное государственное бюджетное образовательное учреждение высшего образования «Астраханский государственный университет имени В. Н. Татищева»,ASU
+Арзамасский политехнический институт (филиал) федерального государственного бюджетного образовательного учреждения высшего образования «Нижегородский государственный технический университет им. Р.Е. Алексеева»,API NNSTU
