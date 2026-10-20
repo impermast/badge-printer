@@ -31,6 +31,7 @@ def export_ai(settings: Settings) -> None:
     returned = paths.patches / "returned"
     originals.mkdir(parents=True, exist_ok=True)
     returned.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(paths.dictionary, paths.patches / "affiliations_reference.csv")
     manifest = {"version": 1, "review_sha256": digest(paths.affiliation_review.read_bytes()), "batches": {}}
     for index, start in enumerate(range(0, len(selected), batch_size), 1):
         chunk = selected[start:start + batch_size]
@@ -49,8 +50,9 @@ def export_ai(settings: Settings) -> None:
     (paths.patches / "manifest.json").write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (paths.patches / "INSTRUCTIONS.md").write_text(INSTRUCTIONS, encoding="utf-8")
     print(f"Exported {len(selected)} unique affiliations in {len(manifest['batches'])} JSON batch(es)")
-    print("Send INSTRUCTIONS.md and one original/batch_NNN.json to ChatGPT")
+    print("Send INSTRUCTIONS.md, affiliations_reference.csv, and one original/batch_NNN.json to ChatGPT")
     print(f"Save returned files in {returned}")
+    print("Then run: python main.py import-ai; approve in data/work/affiliations_review.csv; python main.py apply")
 
 
 def import_ai(settings: Settings) -> None:
@@ -102,24 +104,30 @@ def import_ai(settings: Settings) -> None:
     backup = backups / f"affiliations_before_ai_{datetime.now():%Y%m%d_%H%M%S%f}.csv"
     shutil.copy2(paths.affiliation_review, backup)
     save_csv(paths.affiliation_review, rows, AFFILIATION_COLUMNS)
-    print(f"Imported {len(suggestions)} suggestions into {paths.affiliation_review}")
-    print("Review sources and fill Approved=YES for accepted rows, then run python main.py apply")
+    with_suggestion = sum(bool(item["suggested"].strip()) for item in suggestions.values())
+    print(f"Imported {len(suggestions)} records: {with_suggestion} suggestions, "
+          f"{len(suggestions) - with_suggestion} unresolved")
+    print(f"Proposals stored ONLY in: {paths.affiliation_review}")
+    print("No participant Institution fields have changed yet.")
+    print("Edit Suggested if necessary, set Approved=YES for accepted rows, "
+          "then run: python main.py apply")
 
 
 INSTRUCTIONS = """# Проверка сокращений аффилиаций
 
-Ты проверяешь **только названия научных организаций**, без персональных данных участников конференции.
+Ты проверяешь **только названия научных организаций**, без персональных данных участников конференции. Тебе переданы три файла: эта инструкция, `affiliations_reference.csv` с действующим словарём и один `batch_NNN.json`.
 
-Задача: для каждого `affiliation` найти короткое **официальное или широко принятое** написание на английском, подходящее для печати на бейдже (например `MSU`, `NRNU MEPhI`, `JINR`). Если учреждений несколько, сохрани **все** и их порядок; разделяй сокращения через ` / `.
+Для каждого `affiliation` найди короткое официальное или широко принятое английское написание для бейджа. Обрабатывай организации так:
 
-Важные правила:
+- Сначала ищи название и известные альтернативные написания в `affiliations_reference.csv`. Используй уже утверждённое значение из столбца `Institution`.
+- Не заменяй найденное стандартное сокращение своим вариантом.
+- Для неизвестной организации проверь официальное сокращение на сайте самого учреждения. Укажи использованные URL в `sources`.
+- Для двойных и тройных аффилиаций проверь каждую организацию отдельно. Сохрани исходный порядок и разделяй сокращения через ` / `.
+- Если соответствие неоднозначно или подтвердить его не удалось, оставь `suggested` пустым и объясни причину в `notes`. Не выдумывай сокращения.
 
-- Не выдумывай сокращения. Неоднозначные `INR`, `HW`, `MLIT` и т.п. нельзя расшифровывать без подтверждения.
-- По возможности проверяй официальный сайт каждой организации. Если веб-поиск недоступен, так и напиши в `notes`, не придумывай ссылки.
-- Меняй только `suggested` (строка), `sources` (список URL), `notes` (краткое объяснение); `affiliation` и `batch` **не меняй**.
-- Сохрани количество и порядок записей и имена ключей JSON.
-- Если подтверждения нет, оставь `suggested` пустым либо прежним, в `notes` укажи причину.
-- Верни **только валидный JSON** без Markdown-обёртки и без текста вокруг, как файл с тем же названием `batch_NNN.json`.
+Меняй только `suggested` (строка), `sources` (список URL) и `notes` (краткое объяснение). Не меняй `affiliation`, `batch`, количество и порядок записей или имена ключей JSON.
 
-После возврата предложения попадут в `data/work/affiliations_review.csv`, но останутся неодобренными. Человек вручную ставит `Approved=YES`, после чего локальная программа переносит сокращение в словарь и таблицу.
+Верни только исправленный JSON-патч в прежнем формате, без Markdown и пояснений вокруг. Сохрани имя файла `batch_NNN.json`.
+
+После импорта предложения останутся неодобренными. Пользователь проверяет их и указывает `Approved=YES`; только затем локальная команда `apply` обновит словарь и рабочую таблицу.
 """

@@ -14,7 +14,7 @@ from settings import Paths
 from scripts.ai_patches import export_ai, import_ai
 from scripts.generate import generate_pdf
 from scripts.prepare import apply_approved, prepare, shorten, transliterate
-from scripts.records import AFFILIATION_COLUMNS, read_csv, save_csv
+from scripts.records import AFFILIATION_COLUMNS, AFFILIATION_TOO_LONG, read_csv, save_csv
 
 
 class WorkflowTest(unittest.TestCase):
@@ -49,7 +49,14 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(people[1]["Institution"], "MSU / JINR")
         self.assertEqual(people[2]["Review"], "NEED REVIEW")
 
+        dictionary_before_export = config.paths.dictionary.read_bytes()
         export_ai(config)
+        reference = config.paths.patches / "affiliations_reference.csv"
+        self.assertEqual(reference.read_bytes(), dictionary_before_export)
+        instructions = (config.paths.patches / "INSTRUCTIONS.md").read_text(encoding="utf-8")
+        self.assertIn("affiliations_reference.csv", instructions)
+        self.assertIn("альтернативные написания", instructions)
+        self.assertEqual(config.paths.dictionary.read_bytes(), dictionary_before_export)
         batch_path = config.paths.patches / "original/batch_001.json"
         batch = json.loads(batch_path.read_text(encoding="utf-8"))
         self.assertEqual(len(batch["items"]), 1)
@@ -68,6 +75,9 @@ class WorkflowTest(unittest.TestCase):
         people = read_csv(config.paths.participants)
         self.assertEqual(people[2]["Institution"], "UAPR")
         self.assertEqual(people[2]["Review"], "OK")
+        dictionary = read_csv(config.paths.dictionary)
+        self.assertIn({"Affiliation": "Lomonosov Moscow State University", "Institution": "MSU"}, dictionary)
+        self.assertIn({"Affiliation": "Unknown University of Advanced Physical Research", "Institution": "UAPR"}, dictionary)
 
         people[1]["Type"] = "ORGANIZER"
         save_csv(config.paths.participants, people)
@@ -78,6 +88,55 @@ class WorkflowTest(unittest.TestCase):
             text = doc[0].get_text()
             self.assertIn("Pyotr", text)
             self.assertIn("UAPR", text)
+
+    def test_blank_ai_suggestion_can_be_resolved_manually(self):
+        config = self.settings
+        prepare(config)
+        export_ai(config)
+        batch_path = config.paths.patches / "original/batch_001.json"
+        returned = config.paths.patches / "returned/batch_001.json"
+        returned.write_bytes(batch_path.read_bytes())  # AI found no verified abbreviation.
+        import_ai(config)
+        review = read_csv(config.paths.affiliation_review)
+        self.assertEqual(review[0]["Suggested"], "")
+        review[0]["Suggested"] = "UAPR"
+        review[0]["Approved"] = "YES"
+        save_csv(config.paths.affiliation_review, review, AFFILIATION_COLUMNS)
+        apply_approved(config)
+        edited = read_csv(config.paths.participants)
+        self.assertEqual(edited[2]["Institution"], "UAPR")
+        self.assertEqual(edited[2]["Review"], "OK")
+        self.assertIn("UAPR", config.paths.dictionary.read_text(encoding="utf-8"))
+
+    def test_too_long_affiliation_never_breaks_batch(self):
+        config = self.settings
+        source = read_csv(config.paths.registrations)
+        source[0]["Affiliation"] = "Federal State Educational Institution of Higher " * 5
+        save_csv(config.paths.registrations, source, tuple(source[0]))
+        prepare(config)
+        people = read_csv(config.paths.participants)
+        self.assertIn(AFFILIATION_TOO_LONG, people[0]["Notes"])
+        self.assertEqual(people[0]["Review"], "NEED REVIEW")
+
+        generate_pdf(config)
+        with fitz.open(config.paths.pdf_output) as doc:
+            self.assertEqual(len(doc), 1)
+            text = doc[0].get_text()
+            self.assertIn(people[0]["Last Name"], text)
+            self.assertNotIn("Federal State Educational", text)
+
+        # Once manually shortened, the stale length flag disappears.
+        people = read_csv(config.paths.participants)
+        people[0]["Institution"] = "FSEI"
+        people[0]["Review"] = "OK"
+        people[0]["Notes"] = AFFILIATION_TOO_LONG
+        save_csv(config.paths.participants, people)
+        generate_pdf(config)
+        revised = read_csv(config.paths.participants)[0]
+        self.assertEqual(revised["Review"], "OK")
+        self.assertEqual(revised["Notes"], "")
+        with fitz.open(config.paths.pdf_output) as doc:
+            self.assertIn("FSEI", doc[0].get_text())
 
     def test_reject_incomplete_or_modified_batches(self):
         config = self.settings
